@@ -9,12 +9,13 @@
 #include <sstream>
 
 using namespace clang;
+Rewriter TheReWriter;
 
 class FindFuncVisitor
     : public RecursiveASTVisitor<FindFuncVisitor> {
 public:
-  explicit FindFuncVisitor(Rewriter& R)
-  : TheRewriter(R) {}
+  explicit FindFuncVisitor(ASTContext* Context)
+  : Context(Context) {}
   bool VisitCallExpr(CallExpr *Declaration) {
     // For debugging, dumping the AST nodes will show which nodes are already
     // being visited.
@@ -22,15 +23,17 @@ public:
     if(Declaration->getDirectCallee() != NULL){
       FunctionDecl* f = Declaration->getDirectCallee();
 //      llvm::dbgs() << ->getNameInfo().getName().getAsString() <<"\n";
-      llvm::dbgs() << "hello\n";
-      std::stringstream SSBefore;
-      SSBefore << "/* before \n";
-      SourceLocation ST = Declaration->getBeginLoc();
-      TheRewriter.InsertText(ST, SSBefore.str(),true, true);
-      std::stringstream SSAfter;
-      SSAfter << "after */ \n";
-      ST = Declaration->getEndLoc().getLocWithOffset(1);
-      TheRewriter.InsertText(ST, SSAfter.str(),true, true);
+      if(!f->isDefined() && !f->hasPrototype()){
+        llvm::dbgs() << "hello\n";
+        std::stringstream SSBefore;
+        SSBefore << "/* before \n";
+        SourceLocation ST = Declaration->getBeginLoc();
+        TheReWriter.InsertText(ST, SSBefore.str(),true, true);
+        std::stringstream SSAfter;
+        SSAfter << "after */ \n";
+        ST = Declaration->getEndLoc().getLocWithOffset(2);
+        TheReWriter.InsertText(ST, SSAfter.str(),true, true);
+      }
     }
 
     // The return value indicates whether we want the visitation to proceed.
@@ -39,12 +42,12 @@ public:
   }
 private:
   ASTContext *Context;
-  Rewriter TheRewriter;
+//  Rewriter TheRewriter;
 };
 class FindFuncConsumer : public clang::ASTConsumer {
 public:
-  explicit FindFuncConsumer(Rewriter& R)
-  : Visitor(R) {}
+  explicit FindFuncConsumer(ASTContext* Context)
+  : Visitor(Context) {}
 //  virtual void HandleTranslationUnit(clang::ASTContext &Context) {
 //    // Traversing the translation unit decl via a RecursiveASTVisitor
 //    // will visit all nodes in the AST.
@@ -53,6 +56,11 @@ public:
   virtual bool HandleTopLevelDecl(DeclGroupRef DR) {
     for(auto& b : DR){
       Visitor.TraverseDecl(b);
+    }
+//    TheReWriter.getEditBuffer(TheReWriter.getSourceMgr().getMainFileID()).write(llvm::outs());
+    llvm::dbgs() << "write backing\n";
+    if(TheReWriter.overwriteChangedFiles()){
+      llvm::dbgs() << "failed\n";
     }
     return true;
   }
@@ -64,18 +72,17 @@ class MuteUndefinedASTAction : public PluginASTAction {
 public:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
     TheReWriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-//    return std::make_unique<FindFucConsumer>(&CI.getASTContext());
-    return std::make_unique<FindFuncConsumer>(TheReWriter);
+    return std::make_unique<FindFuncConsumer>(&CI.getASTContext());
+//    return std::make_unique<FindFuncConsumer>(TheReWriter);
   }
-  void EndSourceFileAction(){
-    SourceManager& sm = TheReWriter.getSourceMgr();
-    TheReWriter.getEditBuffer(sm.getMainFileID()).write(llvm::outs());
-  }
+//  void EndSourceFileAction() override {
+//    llvm::dbgs() <<"end\n";
+//    TheReWriter.getEditBuffer(TheReWriter.getSourceMgr().getMainFileID()).write(llvm::outs());
+//    TheReWriter.overwriteChangedFiles();
+//  }
   virtual bool ParseArgs(const CompilerInstance &CI, const std::vector<std::string> &args) {
     return true;
   }
-private:
-  Rewriter TheReWriter;
 };
 
 static FrontendPluginRegistry::Add<MuteUndefinedASTAction> Y("MuteUndefined","My Plugin");
