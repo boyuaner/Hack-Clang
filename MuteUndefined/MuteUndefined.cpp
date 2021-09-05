@@ -30,7 +30,7 @@ public:
         SourceLocation ST = Declaration->getBeginLoc();
         TheReWriter.InsertText(ST, SSBefore.str(),true, true);
         std::stringstream SSAfter;
-        SSAfter << "after */ \n";
+        SSAfter << "\n after */ \n";
         ST = Declaration->getEndLoc().getLocWithOffset(2);
         TheReWriter.InsertText(ST, SSAfter.str(),true, true);
       }
